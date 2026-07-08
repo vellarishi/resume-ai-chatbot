@@ -1,0 +1,126 @@
+import streamlit as st
+from openai import OpenAI
+from pypdf import PdfReader
+
+# ---------------- PAGE CONFIG ----------------
+st.set_page_config(
+    page_title="Resume AI Chatbot",
+    page_icon="🤖",
+    layout="wide"
+)
+
+st.title("🤖 Resume AI Chatbot")
+st.caption("Upload a resume and ask questions about it")
+
+# ---------------- OPENROUTER CLIENT ----------------
+client = OpenAI(
+    api_key="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",
+    base_url="https://openrouter.ai/api/v1",
+)
+
+# ---------------- SESSION STATE ----------------
+if "resume_text" not in st.session_state:
+    st.session_state.resume_text = ""
+
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+
+# ---------------- SIDEBAR ----------------
+with st.sidebar:
+
+    st.header("📄 Upload Resume")
+
+    uploaded_file = st.file_uploader(
+        "Choose PDF File",
+        type=["pdf"]
+    )
+
+    if uploaded_file is not None:
+
+        reader = PdfReader(uploaded_file)
+
+        resume_text = ""
+
+        for page in reader.pages:
+            text = page.extract_text()
+
+            if text:
+                resume_text += text + "\n"
+
+        st.session_state.resume_text = resume_text[:5000]
+
+        st.success("✅ Resume Uploaded")
+
+# ---------------- CHAT DISPLAY ----------------
+for msg in st.session_state.messages:
+
+    with st.chat_message(msg["role"]):
+        st.markdown(msg["content"])
+
+# ---------------- CHAT INPUT ----------------
+if st.session_state.resume_text:
+
+    question = st.chat_input(
+        "Ask something about the resume..."
+    )
+
+    if question:
+
+        st.session_state.messages.append(
+            {
+                "role": "user",
+                "content": question
+            }
+        )
+
+        with st.chat_message("user"):
+            st.markdown(question)
+
+        try:
+
+            response = client.chat.completions.create(
+                model="openrouter/auto",
+                messages=[
+                    {
+                        "role": "system",
+                        "content": """
+You are a Resume Q&A Assistant.
+
+Answer ONLY from the uploaded resume.
+
+If information is not available,
+say:
+'Information not found in resume.'
+"""
+                    },
+                    {
+                        "role": "user",
+                        "content": f"""
+Resume:
+{st.session_state.resume_text}
+
+Question:
+{question}
+"""
+                    }
+                ]
+            )
+
+            answer = response.choices[0].message.content
+
+        except Exception as e:
+
+            answer = f"Error: {e}"
+
+        st.session_state.messages.append(
+            {
+                "role": "assistant",
+                "content": answer
+            }
+        )
+
+        with st.chat_message("assistant"):
+            st.markdown(answer)
+
+else:
+    st.info("👈 Upload a resume PDF from sidebar")
